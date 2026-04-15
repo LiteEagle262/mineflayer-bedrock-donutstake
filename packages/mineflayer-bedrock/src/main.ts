@@ -1,4 +1,3 @@
-import { createBot } from 'mineflayer';
 import { once, sleep } from 'mineflayer/lib/promise_utils.js';
 import mineflayerPathfinder from 'mineflayer-pathfinder';
 import { viewerClickToMovePlugin } from './plugins/viewer-click-to-move.ts';
@@ -7,42 +6,26 @@ import type { protocolTypes } from './protocol.js';
 import { bedrockViewerPlugin } from './plugins/bedrock-viewer/index.ts';
 import { createReplayClient } from 'minecraft-bedrock-test-server';
 import { PlayerAuthInputAnalyzer } from 'minecraft-logs-analyzers';
-import { createSocksUdpRelay, type UdpRelay } from './proxy.ts';
+import { createBot } from './create-bot.ts';
 
 const basePath = `logs/192.168.1.130-${new Date().valueOf()}`;
 
-const targetHost = '127.0.0.1';
-const targetPort = 19132;
-
-// Optional SOCKS5 proxy (must support UDP ASSOCIATE for Bedrock/RakNet).
-// Enable by setting PROXY_HOST and PROXY_PORT env vars.
-let relay: UdpRelay | null = null;
-let host = targetHost;
-let port = targetPort;
-if (process.env.PROXY_HOST && process.env.PROXY_PORT) {
-  relay = await createSocksUdpRelay(
-    {
-      host: process.env.PROXY_HOST,
-      port: parseInt(process.env.PROXY_PORT, 10),
-      username: process.env.PROXY_USERNAME,
-      password: process.env.PROXY_PASSWORD,
-    },
-    targetHost,
-    targetPort,
-  );
-  host = relay.localHost;
-  port = relay.localPort;
-  console.log(`Routing through SOCKS5 proxy ${process.env.PROXY_HOST}:${process.env.PROXY_PORT} via local relay ${host}:${port}`);
-}
-
-const bot = createBot({
-  host,
-  port,
+const bot = await createBot({
+  host: '127.0.0.1',
+  port: 19132,
   auth: 'offline',
   username: 'BedrockBot',
   version: 'bedrock_1.21.130',
   profilesFolder: 'C:/git/profiles',
   offline: true,
+  // Optional SOCKS5 proxy (must support UDP ASSOCIATE for Bedrock/RakNet).
+  // Enable by setting PROXY_HOST / PROXY_PORT (and optionally PROXY_USERNAME / PROXY_PASSWORD).
+  proxy: process.env.PROXY_HOST && process.env.PROXY_PORT ? {
+    host: process.env.PROXY_HOST,
+    port: parseInt(process.env.PROXY_PORT, 10),
+    username: process.env.PROXY_USERNAME,
+    password: process.env.PROXY_PASSWORD,
+  } : undefined,
   //packetLogger: new PlayerAuthInputAnalyzer(basePath),
   //client: createReplayClient(`/dumps/1.21.130-1766997036435 - activate hotbat slots.bin`) as any
 });
@@ -93,7 +76,6 @@ bot.on('error', (err) => console.error(err));
 bot.on('end', () => {
   console.log('Bot disconnected.');
   bot.close();
-  relay?.close();
 });
 bot.once('spawn', () => {
   console.log('Bot spawned!');
@@ -117,7 +99,6 @@ process.on('SIGINT', () => {
   console.log('Shutting down bot...');
   try {
     bot.close();
-    relay?.close();
     setTimeout(() => {
       process.exit(0);
     }, 100);
